@@ -5,6 +5,10 @@
     "keywords": ["nuxeo", "document", "ged", "flysystem"],
     "authors": [
         {
+            "name": "Stéphane Lucien-Vauthier",
+            "email": "direction@aslv-consulting.fr"
+        },
+        {
             "name": "Matthieu Dos Santos",
             "email": "webakiro@gmail.fr"
         }
@@ -22,12 +26,9 @@
     },
     "autoload": {
         "psr-4": {
-            "Ak1r0\\": "src/Ak1r0/"
+            "Ak1r0\\": "src/"
         }
     },
     "autoload-dev": {
-        "psr-4": {
-            "Santiane\\GED\\Tests\\": "tests/"
-        }
     }
 }

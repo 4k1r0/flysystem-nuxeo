@@ -12,23 +12,25 @@ use Nuxeo\Client\Internals\Spi\NuxeoClientException;
 use Ak1r0\Flysystem\Plugin\Concatenator;
 use Ak1r0\Flysystem\Plugin\MimetypeConverter;
 use Ak1r0\Flysystem\Plugin\UidResolver;
+use Zend\Loader\Exception\BadMethodCallException;
 
 /**
- * @TODO gerer les exceptions et les erreurs
+ * @TODO gerer les exceptions et les erreurs sur les methodes delete, deleteDir, copy, rename
+ *       doit retourner un boolean mais il faut permettre d'acceder aux erreurs s'il y en a une
  */
 class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, MimetypeConverter, Concatenator
 {
     /** @var NuxeoClient */
-    protected $service;
+    protected $nuxeoclient;
 
     /**
      * Nuxeo Adapter constructor.
      *
-     * @param NuxeoClient $service
+     * @param NuxeoClient $nuxeoClient
      */
-    public function __construct(NuxeoClient $service)
+    public function __construct(NuxeoClient $nuxeoClient)
     {
-        $this->service  = $service;
+        $this->nuxeoclient = $nuxeoClient;
     }
 
     /**
@@ -46,7 +48,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
 
         /** @var NuxeoObjects\Document $doc */
         /** @var NuxeoObjects\Blob\Blob $blob */
-        [$doc, $blob] = $this->createFromStream($path, $tmp, $config);
+        list($doc, $blob) = $this->createFromStream($path, $tmp, $config);
 
         fclose($tmp);
 
@@ -54,7 +56,8 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
             $doc->getPath(),
             strtotime($doc->getLastModified()),
             $blob->getFile()->getSize(),
-            $blob->getMimeType()
+            $blob->getMimeType(),
+            $doc->getUid()
         );
     }
 
@@ -71,7 +74,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     {
         /** @var NuxeoObjects\Document $doc */
         /** @var NuxeoObjects\Blob\Blob $blob */
-        [$doc, $blob] = $this->createFromStream($path, $resource, $config);
+        list($doc, $blob) = $this->createFromStream($path, $resource, $config);
 
         return $this->normalizeFileProperties(
             $doc->getPath(),
@@ -146,21 +149,21 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
 
         // Move
         /** @var NuxeoObjects\Document $doc */
-        $doc = $this->service->automation('Document.Move')
+        $doc = $this->nuxeoclient->automation('Document.Move')
             ->input('doc:' . $this->normalizePath($path))
             ->params([
                 'target' => $this->normalizePath(Util::dirname($newpath)),
                 'name'   => $newName,
             ])
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         // Rename
-        $doc2 = $this->service->automation('Document.Update')
+        $doc2 = $this->nuxeoclient->automation('Document.Update')
             ->input('doc:' . $doc->getPath())
             ->params([
                 'properties' => 'dc:title=' . $newName,
             ])
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         return $doc && $doc2;
     }
@@ -183,21 +186,21 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         $newpath = $this->applyPathPrefix($newpath);
 
         // Copy
-        $doc = $this->service->automation('Document.Copy')
+        $doc = $this->nuxeoclient->automation('Document.Copy')
             ->input('doc:' . $this->normalizePath($path))
             ->params([
                 'target'     => $this->normalizePath(Util::dirname($newpath)),
                 'name'       => $newName
             ])
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         // Rename
-        $doc2 = $this->service->automation('Document.Update')
+        $doc2 = $this->nuxeoclient->automation('Document.Update')
             ->input('doc:' . $doc->getPath())
             ->params([
                 'properties' => 'dc:title=' . $newName,
             ])
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         return $doc && $doc2;
     }
@@ -211,11 +214,11 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      */
     public function delete($path)
     {
-        $doc = $this->service->automation('Document.Delete')
+        $doc = $this->nuxeoclient->automation('Document.Delete')
             ->input('doc:' . $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
 
-        return true; // @TODO Vérifier si erreur
+        return true;
     }
 
     /**
@@ -256,14 +259,14 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
                 if (! $this->exists($partialDirectory)) {
                     $name = basename($partialDirectory);
 
-                    $this->service->automation('Document.Create')
+                    $this->nuxeoclient->automation('Document.Create')
                         ->input('doc:' . $this->normalizePath(Util::dirname($dirname))) # refer to the parent document
                         ->params([
                             'type'       => 'Folder',
                             'name'       => $name,
                             'properties' => 'dc:title=' . $name,
                         ])
-                        ->execute(NuxeoObjects\Document::class);
+                        ->execute(NuxeoObjects\Document::className);
                 }
             }
         } catch (NuxeoClientException $e) {
@@ -336,17 +339,18 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         $doc = $this->findByPath($path);
 
         /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->service
+        $blob = $this->nuxeoclient
             ->automation('Blob.Get')
             ->input('doc:' . $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
 
         return array_merge(
             $this->normalizeFileProperties(
                 $doc->getPath(),
                 $doc->getLastModified(),
                 $blob->getFile()->getSize(),
-                $blob->getMimeType()
+                $blob->getMimeType(),
+                $doc->getUid()
             ),
             ['contents' => file_get_contents($blob->getFile()->getPathname())]
         );
@@ -367,10 +371,10 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         $doc = $this->findByPath($path);
 
         /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->service
+        $blob = $this->nuxeoclient
             ->automation('Blob.Get')
             ->input('doc:' . $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
 
         $handler = fopen($blob->getFile()->getPathname(), 'r');
 
@@ -379,7 +383,8 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
                 $doc->getPath(),
                 $doc->getLastModified(),
                 $blob->getFile()->getSize(),
-                $blob->getMimeType()
+                $blob->getMimeType(),
+                $doc->getUid()
             ),
             ['stream' => $handler]
         );
@@ -396,13 +401,13 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     public function convert($path, $mimetype)
     {
         /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->service
+        $blob = $this->nuxeoclient
             ->automation('Blob.Convert')
             ->input('doc:' . $this->normalizePath($path))
             ->params([
                 'mimeType' => $mimetype,
             ])
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
 
         return array_merge(
             $this->normalizeFileProperties(
@@ -430,7 +435,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         }
 
         /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->service
+        $blob = $this->nuxeoclient
             ->automation('PDF.MergeWithDocs')
             ->input($documents)
             ->execute(NuxeoObjects\Blob\Blob::className);
@@ -456,13 +461,13 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     public function concatenateByUids(array $uids)
     {
         /** @var NuxeoObjects\Documents $documents */
-        $documents = $this->service
+        $documents = $this->nuxeoclient
             ->automation('Document.Query')
             ->param('query', 'SELECT * FROM Document WHERE ecm:uuid IN ("' . implode('","', $uids) . '")')
             ->execute(NuxeoObjects\Documents::className);
 
         /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->service
+        $blob = $this->nuxeoclient
             ->automation('PDF.MergeWithDocs')
             ->input($documents->getDocuments())
             ->execute(NuxeoObjects\Blob\Blob::className);
@@ -485,6 +490,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param bool   $recursive
      *
      * @return array
+     * @throws BadMethodCallException Not implemented yet
      */
     public function listContents($directory = '', $recursive = false)
     {
@@ -497,11 +503,11 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
+     * @throws BadMethodCallException Not implemented yet
      */
     public function getMetadata($path)
     {
         throw new \BadMethodCallException('Not implemented');
-        return [];
     }
 
     /**
@@ -510,6 +516,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
+     * @throws BadMethodCallException Not implemented yet
      */
     public function getSize($path)
     {
@@ -522,6 +529,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
+     * @throws BadMethodCallException Not implemented yet
      */
     public function getMimetype($path)
     {
@@ -542,6 +550,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
+     * @throws BadMethodCallException Not implemented yet
      */
     public function getTimestamp($path)
     {
@@ -554,6 +563,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
+     * @throws BadMethodCallException Not implemented yet
      */
     public function getVisibility($path)
     {
@@ -595,10 +605,10 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      */
     protected function findDocument($search)
     {
-        $doc = $this->service
+        $doc = $this->nuxeoclient
             ->automation('Document.Fetch')
             ->param('value', $search)
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         return $doc;
     }
@@ -638,18 +648,18 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         $mimeType    = mime_content_type($tmpFilepath);
 
         if (false === $mimeType) {
-            //@TODO
+            //@TODO wromg mimetype
         }
 
         /** @var NuxeoObjects\Document $doc */
-        $doc = $this->service->automation('Document.Create')
+        $doc = $this->nuxeoclient->automation('Document.Create')
             ->input('doc:' . $this->normalizePath(Util::dirname($path))) # refer to the parent document
             ->params([
                 'type'       => 'File',
                 'name'       => $fileName,
                 'properties' => 'dc:title=' . $fileName,
             ])
-            ->execute(NuxeoObjects\Document::class);
+            ->execute(NuxeoObjects\Document::className);
 
         $blob = $this->uploadFile($doc->getPath(), $tmpFilepath, $mimeType);
 
@@ -665,21 +675,32 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      *
      * @return NuxeoObjects\Blob\Blob
      */
-    protected function uploadFile(string $path, string $tmpFilepath, string $mimeType)
+    protected function uploadFile($path, $tmpFilepath, $mimeType)
     {
         # Upload du contenu du fichier
-        $this->service->automation('Blob.Attach')
+        $this->nuxeoclient->automation('Blob.Attach')
             ->input(NuxeoObjects\Blob\Blob::fromFile($tmpFilepath, $mimeType))
             ->param('document', $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
 
         # Renomer le blob (contenu) du fichier
-        return $this->service->automation('Blob.SetFilename')
+        return $this->nuxeoclient->automation('Blob.SetFilename')
             ->input('doc:'.$this->normalizePath($path))
             ->param('name', basename($path))
-            ->execute(NuxeoObjects\Blob\Blob::class);
+            ->execute(NuxeoObjects\Blob\Blob::className);
     }
 
+    /**
+     * Create a tempoary file
+     * The file is automatically removed when closed (for example, by calling fclose(),
+     * or when there are no remaining references to the file handle returned by tmpfile()), or when the script ends.
+     * Caution : If the script terminates unexpectedly, the temporary file may not be deleted.
+     * @see tmpfile()
+     *
+     * @param string $content
+     *
+     * @return bool|resource
+     */
     protected function createTmpFile($content)
     {
         $tmp = tmpfile();
@@ -691,6 +712,13 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         return $tmp;
     }
 
+    /**
+     * Apply directory separator before and after the path
+     *
+     * @param string $path
+     *
+     * @return string
+     */
     protected function normalizePath($path)
     {
         return '/'.trim($path, '/').'/';
@@ -700,22 +728,26 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * Builds the normalized output array from a Directory object.
      *
      * @param string $path
+     * @param int    $timestamp
+     * @param int    $size The filesize in bytes.
+     * @param string $mimetype
+     * @param string $uid
      *
      * @return array
      */
-    protected function normalizeFileProperties($path, $timestamp, $size, $mimetype)
+    protected function normalizeFileProperties($path, $timestamp, $size, $mimetype, $uid = '')
     {
         $path = $this->removePathPrefix($path);
 
         $properties = [
-            'type'     => 'file',
-            'path'     => $path,
-            'dirname'  => Util::dirname($path),
-            'timestamp'=> $timestamp, // strtotime($doc->getLastModified()),
+            'type'      => 'file',
+            'path'      => $path,
+            'dirname'   => Util::dirname($path),
+            'timestamp' => $timestamp, // strtotime($doc->getLastModified()),
+            'size'      => $size, //$blob->getFile()->getSize();
+            'mimetype'  => $mimetype, //$blob->getMimeType();
+            'uid'       => $uid,
         ];
-
-            $properties['size']     = $size; //$blob->getFile()->getSize();
-            $properties['mimetype'] = $mimetype; //$blob->getMimeType();
 
         return $properties;
     }
