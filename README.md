@@ -101,13 +101,7 @@ Flysystem works using paths but one best pratice with Nuxeo is to use uids
 
 ```php
 $uid = 'f4e22103-2540-46e8-8ed6-2a78586bd2e3';
-$path = $filesystem->resolveUid($uid);
-
-$uid1 = 'a8697b72-d65f-4215-a192-0731c8fe2417';
-$path1 = $filesystem->resolveUid($uid1);
-
-$uid2 = '188ae5fb-d093-49b8-b072-84ea27006449';
-$path2 = $filesystem->resolveUid($uid2);
+$path = $filesystem->resolveUid($uid); // $path = '/path/to/doc/';
 ```
 
 ### Convert mimetype
