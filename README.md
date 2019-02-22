@@ -39,7 +39,7 @@ $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\ConcatenatorPlugin($nuxeoAdap
 ```php
 $normalisedArray = [
  'type'      => 'file', // string
- 'path'      => /path/to/doc/, // string
+ 'path'      => '/path/to/doc/', // string
  'dirname'   => 'dir', // string
  'timestamp' => 123456, // int
  'size'      => 500, // int
