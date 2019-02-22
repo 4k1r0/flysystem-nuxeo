@@ -8,7 +8,7 @@ Flysystem adapter for Nuxeo
 
 ## Install
 ```
-composer install ak1r0/flysystem-nuxeo
+composer require ak1r0/flysystem-nuxeo
 ```
 
 ## Usage

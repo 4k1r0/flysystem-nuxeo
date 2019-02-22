@@ -17,10 +17,10 @@
         "php": "^5.4",
         "nuxeo/nuxeo-php-client": "^1.5",
         "symfony/http-foundation": "^3.4",
-        "league/flysystem": "^1.0",
-        "league/flysystem-cached-adapter": "^1.0"
+        "league/flysystem": "^1.0"
     },
     "suggest": {
+        "ak1r0/flysystem-filepathstrategy": "^1.0"
     },
     "require-dev": {
     },
