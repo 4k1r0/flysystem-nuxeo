@@ -1,9 +1,19 @@
 # flysystem-nuxeo
 Flysystem adapter for Nuxeo
 
-# Usage
+## Todos
 
-## Init
++ Tests Units
++ PHP 7 version
+
+## Install
+```
+composer install Ak1r0/flysystem-nuxeo
+```
+
+## Usage
+
+### Init
 
 ```php
 $config = array(
@@ -24,7 +34,7 @@ $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\MimetypeConverterPlugin($nuxe
 $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\ConcatenatorPlugin($nuxeoAdapter));
 ```
 
-## Returns
+### Returns
 
 ```php
 $normalisedArray = [
@@ -42,61 +52,47 @@ $normalisedArray['content'] = $content; // string
 
 // For readStream/writeStream/updateStream methods the index 'stream' is added
 $normalisedArray['stream'] = $resource; // resource
-
 ```
 
-## Basic functions
+### Basic functions
 
-### Read
 ```php
+// Read
 $normalisedArray = $filesystem->read($path);
 $normalisedArray = $filesystem->readStream($path);
-```
 
-### Write
-```php
+// Write
 $normalisedArray = $filesystem->write($path, file_get_contents($pathToNewContent));
-```
 
-```php
+// Write Stream
 $resource = fopen($pathToNewContent, 'r');
 $normalisedArray = $filesystem->writeStream($path, $resource);
-```
 
-### Create Dir
-```php
+// Create Dir
 $array = $filesystem->createDir($dirname, $config);
 // $array = ['path' => '/path/to/dir/', 'type' => 'dir'];
-```
 
-### Update
-```php
+// Update
 $normalisedArray = $filesystem->update($path, file_get_contents($pathToNewContent));
-```
-```php
+
+// Update Stream
 $resource = fopen($pathToNewContent, 'r');
 $normalisedArray = $filesystem->updateStream($path, $resource);
-```
 
-### Rename
-```php
+// Rename
 $bool = $filesystem->rename($path, $newName);
-```
 
-### Copy
-```php
+// Copy
 $bool = $filesystem->copy($fromPath, $toPath);
-```
 
-### Delete
-```php
+// Delete
 $bool = $filesystem->delete($path);
 $bool = $filesystem->deleteDir($dirPath);
 ```
 
 ## Plugins
 
-### Uid to path
+### UidResolverPlugin
 Flysystem works using paths but one best pratice with Nuxeo is to use uids
 
 ```php
@@ -104,12 +100,12 @@ $uid = 'f4e22103-2540-46e8-8ed6-2a78586bd2e3';
 $path = $filesystem->resolveUid($uid); // $path = '/path/to/doc/';
 ```
 
-### Convert mimetype
+### MimetypeConverterPlugin
 ```php
 $normalisedArray = $filesystem->convert($path, 'text/plain');
 ```
 
-### Concatenate
+### ConcatenatorPlugin
 ```php
 $normalisedArray = $filesystem->concatenate([$path, $path1, $path2]);
 ```
