@@ -1,5 +1,5 @@
 {
-    "name": "Ak1r0/flysystem-nuxeo",
+    "name": "ak1r0/flysystem-nuxeo",
     "type": "library",
     "description": "Flysystem adapter for Nuxeo",
     "keywords": ["nuxeo", "document", "ged", "flysystem"],
