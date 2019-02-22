@@ -28,7 +28,7 @@ $client = new \Nuxeo\Client\Api\NuxeoClient($config['url'], $config['username'],
 $nuxeoAdapter = new \Ak1r0\Flysystem\Adapter\Nuxeo($client);
 $nuxeoAdapter->setPathPrefix($config['baseRepository']);
 
-$filesystem   = new \Ak1r0\Flysystem\Filesystem($nuxeoAdapter);
+$filesystem   = new \League\Flysystem\Filesystem($nuxeoAdapter);
 $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\UidResolverPlugin($nuxeoAdapter));
 $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\MimetypeConverterPlugin($nuxeoAdapter));
 $filesystem->addPlugin(new \Ak1r0\Flysystem\Plugin\ConcatenatorPlugin($nuxeoAdapter));
