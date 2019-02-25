@@ -113,5 +113,5 @@ $normalisedArray = $filesystem->concatenate([$path, $path1, $path2]);
 For this case nuxeo also implements a faster way using uids
 
 ```php
-$normalisedArray = $filesystem->concatenateByUids([$uid, $uid1, $uid2]);
+$normalisedArray = $filesystem->concatenate([$uid, $uid1, $uid2], true);
 ```
