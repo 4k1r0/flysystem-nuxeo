@@ -51,7 +51,7 @@ class UidResolverPlugin implements PluginInterface
      *
      * @return string
      */
-    public function handle(string $uid)
+    public function handle($uid)
     {
         return $this->adapter->resolveUid($uid);
     }

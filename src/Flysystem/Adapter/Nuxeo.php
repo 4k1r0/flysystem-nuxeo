@@ -80,7 +80,8 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
             $doc->getPath(),
             strtotime($doc->getLastModified()),
             $blob->getFile()->getSize(),
-            $blob->getMimeType()
+            $blob->getMimeType(),
+            $doc->getUid()
         );
     }
 
