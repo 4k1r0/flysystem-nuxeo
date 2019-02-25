@@ -48,6 +48,7 @@ class ConcatenatorPlugin implements PluginInterface
      * Concatenate many documents into one
      *
      * @param array $paths
+     * @param bool $isUids - If true, Concatenate by uuid, else by path
      *
      * @return array|false
      */
