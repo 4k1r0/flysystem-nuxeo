@@ -5,6 +5,7 @@ namespace Ak1r0\Flysystem\Adapter;
 use League\Flysystem\Adapter\AbstractAdapter;
 use League\Flysystem\Adapter\CanOverwriteFiles;
 use League\Flysystem\Config;
+use League\Flysystem\FileNotFoundException;
 use League\Flysystem\Util;
 use Nuxeo\Client\Api\NuxeoClient;
 use Nuxeo\Client\Api\Objects as NuxeoObjects;
@@ -24,6 +25,13 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     protected $nuxeoclient;
 
     /**
+     * @var array[] Used to store metadatas on uploaded documents
+     *              because we need return the document uid but Nuxeo will tell the file does not exists
+     *              when it's uploaded just before
+     */
+    protected $documentMetadatas = [];
+
+    /**
      * Nuxeo Adapter constructor.
      *
      * @param NuxeoClient $nuxeoClient
@@ -31,6 +39,144 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     public function __construct(NuxeoClient $nuxeoClient)
     {
         $this->nuxeoclient = $nuxeoClient;
+    }
+
+    /**
+     * Check whether a file exists.
+     *
+     * @param string $path
+     *
+     * @return array|bool|null
+     */
+    public function has($path)
+    {
+        // Cheat because Nuxeo does not find a document if it was uploaded just before this call
+        if (isset($this->documentMetadatas[$path])) {
+            return true;
+        }
+
+        $path = $this->applyPathPrefix($path);
+        return $this->exists($path);
+    }
+
+    /**
+     * Check whether a file exists.
+     *
+     * @param string $path
+     *
+     * @return array|bool|null
+     */
+    protected function exists($path)
+    {
+        try {
+            return $this->findByPath($path) ? true : false;
+        } catch (\Exception $e) {
+            // if (666 == $e->getCode()) // NuxeoClientException : doesnt seem to be an error
+            return false;
+        }
+    }
+
+    /**
+     * Find a document with his path
+     *
+     * @param string $path Path
+     *
+     * @return NuxeoObjects\Document
+     * @throws FileNotFoundException
+     */
+    public function findByPath($path)
+    {
+        return $this->findDocument($this->normalizePath($path));
+    }
+
+    /**
+     * Get a Nuxeo Document Object
+     *
+     * @param string $search Path or UID
+     *
+     * @return NuxeoObjects\Document
+     * @throws FileNotFoundException
+     */
+    protected function findDocument($search)
+    {
+        try {
+            $doc = $this->nuxeoclient
+                ->automation('Document.Fetch')
+                ->param('value', $search)
+                ->execute(NuxeoObjects\Document::className);
+        } catch (\Exception $e) {
+            throw new FileNotFoundException($search, $e->getCode(), $e);
+        }
+
+        return $doc;
+    }
+
+    /**
+     * Read a file.
+     *
+     * @param string $path
+     *
+     * @return array|false
+     * @throws FileNotFoundException
+     */
+    public function read($path)
+    {
+        $path = $this->applyPathPrefix($path);
+
+        /** @var NuxeoObjects\Document $doc */
+        $doc = $this->findByPath($path);
+
+        /** @var NuxeoObjects\Blob\Blob $blob */
+        $blob = $this->nuxeoclient
+            ->automation('Blob.Get')
+            ->input('doc:' . $this->normalizePath($path))
+            ->execute(NuxeoObjects\Blob\Blob::className);
+
+        return array_merge(
+            $this->normalizeFileProperties(
+                $doc->getPath(),
+                $doc->getLastModified(),
+                $blob->getFile()->getSize(),
+                $blob->getMimeType(),
+                $doc->getUid()
+            ),
+            ['contents' => file_get_contents($blob->getFile()->getPathname())]
+        );
+    }
+
+    /**
+     * Read a file as a stream.
+     *
+     * @param string $path
+     *
+     * @return array|false
+     * @throws FileNotFoundException
+     */
+    public function readStream($path)
+    {
+        $path = $this->applyPathPrefix($path);
+
+        /** @var NuxeoObjects\Document $doc */
+        $doc = $this->findByPath($path);
+
+        /** @var NuxeoObjects\Blob\Blob $blob */
+        $blob = $this->nuxeoclient
+            ->automation('Blob.Get')
+            ->input('doc:' . $this->normalizePath($path))
+            ->execute(NuxeoObjects\Blob\Blob::className);
+
+        $handler = fopen($blob->getFile()->getPathname(), 'r');
+
+        return array_merge(
+            $this->normalizeFileProperties(
+                $doc->getPath(),
+                $doc->getLastModified(),
+                $blob->getFile()->getSize(),
+                $blob->getMimeType(),
+                $doc->getUid()
+            ),
+            ['stream' => $handler]
+        );
     }
 
     /**
@@ -215,7 +361,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      */
     public function delete($path)
     {
-        $doc = $this->nuxeoclient->automation('Document.Delete')
+        $this->nuxeoclient->automation('Document.Delete')
             ->input('doc:' . $this->normalizePath($path))
             ->execute(NuxeoObjects\Blob\Blob::className);
 
@@ -278,120 +424,6 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     }
 
     /**
-     * Set the visibility for a file.
-     *
-     * @param string $path
-     * @param string $visibility
-     *
-     * @return array|false file meta data
-     */
-    public function setVisibility($path, $visibility)
-    {
-        throw new \BadMethodCallException('Not implemented');
-    }
-
-    /**
-     * Check whether a file exists.
-     *
-     * @param string $path
-     *
-     * @return array|bool|null
-     * @throws NuxeoClientException If an error happen within Nuxeo API
-     */
-    public function has($path)
-    {
-        $path = $this->applyPathPrefix($path);
-        return $this->exists($path);
-    }
-
-    /**
-     * Check whether a file exists.
-     *
-     * @param string $path
-     *
-     * @return array|bool|null
-     * @throws NuxeoClientException If an error happen within Nuxeo API
-     */
-    protected function exists($path)
-    {
-        try {
-            return $this->findByPath($path) ? true : false;
-        } catch (NuxeoClientException $e) {
-            if (666 == $e->getCode()) {
-                return false;
-            } else {
-                throw $e;
-            }
-        }
-    }
-
-    /**
-     * Read a file.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function read($path)
-    {
-        $path = $this->applyPathPrefix($path);
-
-        /** @var NuxeoObjects\Document $doc */
-        $doc = $this->findByPath($path);
-
-        /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->nuxeoclient
-            ->automation('Blob.Get')
-            ->input('doc:' . $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::className);
-
-        return array_merge(
-            $this->normalizeFileProperties(
-                $doc->getPath(),
-                $doc->getLastModified(),
-                $blob->getFile()->getSize(),
-                $blob->getMimeType(),
-                $doc->getUid()
-            ),
-            ['contents' => file_get_contents($blob->getFile()->getPathname())]
-        );
-    }
-
-    /**
-     * Read a file as a stream.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function readStream($path)
-    {
-        $path = $this->applyPathPrefix($path);
-
-        /** @var NuxeoObjects\Document $doc */
-        $doc = $this->findByPath($path);
-
-        /** @var NuxeoObjects\Blob\Blob $blob */
-        $blob = $this->nuxeoclient
-            ->automation('Blob.Get')
-            ->input('doc:' . $this->normalizePath($path))
-            ->execute(NuxeoObjects\Blob\Blob::className);
-
-        $handler = fopen($blob->getFile()->getPathname(), 'r');
-
-        return array_merge(
-            $this->normalizeFileProperties(
-                $doc->getPath(),
-                $doc->getLastModified(),
-                $blob->getFile()->getSize(),
-                $blob->getMimeType(),
-                $doc->getUid()
-            ),
-            ['stream' => $handler]
-        );
-    }
-
-    /**
      * Convert a doc to another mimetype
      *
      * @param string $path
@@ -427,6 +459,7 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string[] $paths
      *
      * @return array|false
+     * @throws FileNotFoundException
      */
     public function concatenate(array $paths)
     {
@@ -484,6 +517,46 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
         );
     }
 
+
+    /**
+     * Resolve an UID into a path
+     *
+     * @param string $uid
+     *
+     * @return string
+     * @throws FileNotFoundException
+     */
+    public function resolveUid($uid)
+    {
+        $path = $this->findDocument($uid)->getPath();
+        return $this->removePathPrefix($path);
+    }
+
+    /**
+     * Remove a path prefix.
+     *
+     * @param string $path
+     *
+     * @return string path without the prefix
+     */
+    public function removePathPrefix($path)
+    {
+        return preg_replace('#^('.$this->getPathPrefix().')#', '', $path);
+    }
+
+    /**
+     * Set the visibility for a file.
+     *
+     * @param string $path
+     * @param string $visibility
+     *
+     * @return array|false file meta data
+     */
+    public function setVisibility($path, $visibility)
+    {
+        throw new \BadMethodCallException('Not implemented');
+    }
+
     /**
      * List contents of a directory.
      *
@@ -504,11 +577,32 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
      * @param string $path
      *
      * @return array|false
-     * @throws BadMethodCallException Not implemented yet
+     * @throws FileNotFoundException
      */
     public function getMetadata($path)
     {
-        throw new \BadMethodCallException('Not implemented');
+        if (isset($this->documentMetadatas[$path])) {
+            return $this->documentMetadatas[$path];
+        }
+
+        $path = $this->applyPathPrefix($path);
+
+        /** @var NuxeoObjects\Document $doc */
+        $doc = $this->findByPath($path);
+
+        /** @var NuxeoObjects\Blob\Blob $blob */
+        $blob = $this->nuxeoclient
+            ->automation('Blob.Get')
+            ->input('doc:' . $this->normalizePath($path))
+            ->execute(NuxeoObjects\Blob\Blob::className);
+
+        return $this->normalizeFileProperties(
+            $doc->getPath(),
+            $doc->getLastModified(),
+            $blob->getFile()->getSize(),
+            $blob->getMimeType(),
+            $doc->getUid()
+        );
     }
 
     /**
@@ -569,49 +663,6 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
     public function getVisibility($path)
     {
         throw new \BadMethodCallException('Not implemented');
-    }
-
-
-    /**
-     * Resolve an UID into a path
-     *
-     * @param string $uid
-     *
-     * @return string
-     */
-    public function resolveUid($uid)
-    {
-        $path = $this->findDocument($uid)->getPath();
-        return $this->removePathPrefix($path);
-    }
-
-    /**
-     * Find a document with his path
-     *
-     * @param string $path Path
-     *
-     * @return NuxeoObjects\Document
-     */
-    public function findByPath($path)
-    {
-        return $this->findDocument($this->normalizePath($path));
-    }
-
-    /**
-     * Get a Nuxeo Document Object
-     *
-     * @param string $search Path or UID
-     *
-     * @return NuxeoObjects\Document
-     */
-    protected function findDocument($search)
-    {
-        $doc = $this->nuxeoclient
-            ->automation('Document.Fetch')
-            ->param('value', $search)
-            ->execute(NuxeoObjects\Document::className);
-
-        return $doc;
     }
 
     /**
@@ -750,18 +801,10 @@ class Nuxeo extends AbstractAdapter implements CanOverwriteFiles, UidResolver, M
             'uid'       => $uid,
         ];
 
-        return $properties;
-    }
+        if (!empty($uid)) {
+            $this->documentMetadatas[$path] = $properties;
+        }
 
-    /**
-     * Remove a path prefix.
-     *
-     * @param string $path
-     *
-     * @return string path without the prefix
-     */
-    public function removePathPrefix($path)
-    {
-        return preg_replace('#^('.$this->getPathPrefix().')#', '', $path);
+        return $properties;
     }
 }

@@ -3,6 +3,7 @@
 namespace Ak1r0\Flysystem\Plugin;
 
 use League\Flysystem\FilesystemInterface;
+use League\Flysystem\FileNotFoundException;
 use League\Flysystem\PluginInterface;
 
 /**
@@ -50,6 +51,7 @@ class UidResolverPlugin implements PluginInterface
      * @param string $uid
      *
      * @return string
+     * @throws FileNotFoundException
      */
     public function handle($uid)
     {
