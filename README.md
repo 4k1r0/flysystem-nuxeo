@@ -49,7 +49,7 @@ $handle = fopen($pathToNewContent, 'r');
 $filesystem->writeStream(string $path, resource $handle): bool;
 
 // Create Dir
-$filesystem->createDir($dirname, $config): array; // return ['path' => '/path/to/dir/', 'type' => 'dir'];
+$filesystem->createDir(string $dirname, \League\Flysystem\Config $config): array; // return ['path' => '/path/to/dir/', 'type' => 'dir'];
 
 // Update
 $filesystem->update(string $path, string $content): bool;
